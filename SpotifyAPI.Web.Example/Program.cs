@@ -8,8 +8,8 @@ namespace SpotifyAPI.Web.Example
 {
     internal static class Program
     {
-        private static string _clientId = ""; //"";
-        private static string _secretId = ""; //"";
+        private static string _clientId = "c04cdb49f2e34e25989458ff1653e194"; //"";
+        private static string _secretId = "e8c464ee20d1453aa03330669f4ed2d9"; //"";
 
         static void Main(string[] args)
         {
@@ -28,7 +28,7 @@ namespace SpotifyAPI.Web.Example
 
 
                         AuthorizationCodeAuth auth =
-                            new AuthorizationCodeAuth(_clientId, _secretId, "http://localhost:4002", "http://localhost:4002",
+                            new AuthorizationCodeAuth(_clientId, _secretId, "http://www.google.com", "http://localhost:4002",
                                 Scope.PlaylistReadPrivate | Scope.PlaylistReadCollaborative);
                         auth.AuthReceived += AuthOnAuthReceived;
                         auth.Start();
