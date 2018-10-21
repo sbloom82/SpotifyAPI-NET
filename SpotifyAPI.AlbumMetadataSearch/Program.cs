@@ -15,11 +15,27 @@ namespace SpotifyAPI.AlbumMetadataSearch
         static void Main(string[] args)
         {
             string path = args[0];
-            string[] paths = path.Split(new char[] { Path.DirectorySeparatorChar });
 
-            string artistName = paths[paths.Length - 2];
-            string albumName = paths[paths.Length - 1];
+            int depth = 0;
+            DirectoryInfo dir = new DirectoryInfo(path);
+            DirectoryInfo[] children = dir.GetDirectories();
+            while (children.Length > 0)
+            {
+                depth++;
+                children = children[0].GetDirectories();
+            }
 
+            if (depth > 0)
+            {
+                Console.WriteLine($"Child directories found, detected depth is {depth}.  Press Y to continue");
+                if (Console.ReadKey().Key != ConsoleKey.Y)
+                {
+                    return;
+                }
+                Console.WriteLine();
+                Console.WriteLine();
+            }
+            
             CredentialsAuth auth = new CredentialsAuth("c04cdb49f2e34e25989458ff1653e194", "e8c464ee20d1453aa03330669f4ed2d9");
             Task<Token> task = auth.GetToken();
             task.Wait();
@@ -28,52 +44,78 @@ namespace SpotifyAPI.AlbumMetadataSearch
             {
                 TokenType = "Bearer",
                 AccessToken = task.Result.AccessToken
-            };
+            };          
+
+            ProcessDirectory(api, dir, depth);
+        }
+
+        public static void ProcessDirectory(SpotifyWebAPI api, DirectoryInfo dir, int depth)
+        {
+            if (depth != 0)
+            {
+                depth--;
+                foreach (DirectoryInfo di in dir.GetDirectories())
+                {
+                    ProcessDirectory(api, di, depth);
+                }
+                return;
+            }
+
+            string path = dir.FullName;
+            string[] paths = path.Split(new char[] { Path.DirectorySeparatorChar });
+            
+            string artistName = paths[paths.Length - 2];
+            string albumName = paths[paths.Length - 1];                     
 
             Console.WriteLine($"Searching for {artistName} - {albumName}");
 
             List<KeyValuePair<FullAlbum, FullArtist>> albums = new List<KeyValuePair<FullAlbum, FullArtist>>();
 
             var search = api.SearchItems(artistName, SpotifyAPI.Web.Enums.SearchType.Artist);
-            SimpleAlbum exactMatch = null;
+            bool hasExactMatch = false;
             foreach (FullArtist a in search.Artists.Items)
             {
-                bool artistDisplayed = false;
-
                 List<SimpleAlbum> searchAlbums = api.GetArtistsAlbums(a.Id, SpotifyAPI.Web.Enums.AlbumType.Album).Items;
                 foreach (SimpleAlbum album in searchAlbums)
                 {
                     if (a.Name.Equals(artistName, StringComparison.InvariantCultureIgnoreCase) &&
                         album.Name.Equals(albumName, StringComparison.InvariantCultureIgnoreCase))
                     {
-                        exactMatch = album;
+                        hasExactMatch = true;
                         break;
                     }
                 }
 
                 foreach (SimpleAlbum album in searchAlbums)
                 {
-                    if (exactMatch != null && exactMatch != album)
+                    bool exactMatch =
+                        a.Name.Equals(artistName, StringComparison.InvariantCultureIgnoreCase) &&
+                        album.Name.Equals(albumName, StringComparison.InvariantCultureIgnoreCase);
+
+                    bool qualifyingMatch = 
+                        a.Name.StartsWith(artistName, StringComparison.InvariantCultureIgnoreCase) &&
+                        album.Name.StartsWith(albumName, StringComparison.InvariantCultureIgnoreCase);
+
+                    if (hasExactMatch)
                     {
-                        continue;
-                    }
-                    else if(exactMatch == album)
-                    {
-                        Console.WriteLine("Exact Match");
+                        if (!qualifyingMatch)
+                        {
+                            continue;
+                        }
+                        else
+                        {
+                            if (exactMatch)
+                            {
+                                Console.WriteLine("Exact Match");
+                            }
+                            else
+                            {
+                                Console.WriteLine("Qualifying Match");
+                            }
+                        }
                     }
 
-                    if (!artistDisplayed)
-                    {
-                        Console.WriteLine("--------------------");
-                        Console.WriteLine($"Name: {a.Name}");
-                        Console.WriteLine($"Id: {a.Id}");
-                        Console.WriteLine($"{a.Type} {a.Uri} {a.Href}");
-
-                        Console.WriteLine("   Albums:");
-                        artistDisplayed = true;
-                    }
-
-                    Console.WriteLine($"#{albums.Count + 1}  {album.Name} - {album.ReleaseDate} - {album.Type}");
+                    Console.WriteLine($"#{albums.Count + 1} - {a.Name} - \"{album.Name}\" - {album.ReleaseDate} - {album.Type}");
 
                     FullAlbum fullAlbum = api.GetAlbum(album.Id);
                     albums.Add(new KeyValuePair<FullAlbum, FullArtist>(fullAlbum, a));
@@ -86,7 +128,7 @@ namespace SpotifyAPI.AlbumMetadataSearch
 
             FullAlbum selectedAlbum = null;
             FullArtist selectedArtist = null;
-
+            
             if (albums.Count > 0)
             {
                 Console.WriteLine("Type album number to accept album info");
@@ -180,7 +222,10 @@ namespace SpotifyAPI.AlbumMetadataSearch
                     tagFile.Save();
                 }
 
-                Console.WriteLine("Done");
+                Console.WriteLine($"{artistName} - {artistName} Complete");
+                Console.WriteLine("-------------------------------------");
+                Console.WriteLine();
+                Console.Clear();
             }
         }
     }
