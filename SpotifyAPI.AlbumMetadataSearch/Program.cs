@@ -48,6 +48,37 @@ namespace SpotifyAPI.AlbumMetadataSearch
             ProcessDirectory(api, dir, depth);
         }
 
+        private static SearchItem artistSearch = null;
+        public static SearchItem GetArtistSearch(SpotifyWebAPI api, string artistName)
+        {
+            if (artistSearch == null)
+            {
+                artistSearch = api.SearchItems(artistName, Web.Enums.SearchType.Artist, market: "US");
+            }
+            return artistSearch;
+        }
+
+        public static Dictionary<string, List<SimpleAlbum>> artistAlbums = new Dictionary<string, List<SimpleAlbum>>(StringComparer.InvariantCultureIgnoreCase);
+        public static List<SimpleAlbum> GetArtistAlbums(SpotifyWebAPI api, string id)
+        {
+            if (!artistAlbums.TryGetValue(id, out List<SimpleAlbum> albums))
+            {
+                albums = api.GetArtistsAlbums(id, SpotifyAPI.Web.Enums.AlbumType.Album, limit: 250, market: "US").Items;
+                artistAlbums[id] = albums;
+            }
+            return albums;
+        }
+
+        public static Dictionary<string, FullAlbum> fullAlbums = new Dictionary<string, FullAlbum>();
+        public static FullAlbum GetFullAlbum(SpotifyWebAPI api, string id)
+        {
+            if (!fullAlbums.TryGetValue(id, out FullAlbum fullAlbum))
+            {
+                fullAlbum = api.GetAlbum(id);
+            }
+            return fullAlbum;
+        }
+
         public static void ProcessDirectory(SpotifyWebAPI api, DirectoryInfo dir, int depth)
         {
             if (depth != 0)
@@ -70,12 +101,18 @@ namespace SpotifyAPI.AlbumMetadataSearch
 
             List<KeyValuePair<FullAlbum, FullArtist>> albums = new List<KeyValuePair<FullAlbum, FullArtist>>();
 
-            var search = api.SearchItems(artistName, SpotifyAPI.Web.Enums.SearchType.Artist);
+            var search = GetArtistSearch(api, artistName);
+
             bool hasExactMatch = false;
             bool hasQualifyingMatch = false;
             foreach (FullArtist a in search.Artists.Items)
             {
-                List<SimpleAlbum> searchAlbums = api.GetArtistsAlbums(a.Id, SpotifyAPI.Web.Enums.AlbumType.Album, market: "US").Items;
+                List<SimpleAlbum> searchAlbums = GetArtistAlbums(api, a.Id);
+                if (searchAlbums == null)
+                {
+                    continue;
+                }
+
                 foreach (SimpleAlbum album in searchAlbums)
                 {
                     if (a.Name.Equals(artistName, StringComparison.InvariantCultureIgnoreCase) &&
@@ -84,7 +121,7 @@ namespace SpotifyAPI.AlbumMetadataSearch
                         hasExactMatch = true;
                         break;
                     }
-                    else if(
+                    else if (
                         (artistName.StartsWith(a.Name, StringComparison.InvariantCultureIgnoreCase) || a.Name.StartsWith(artistName, StringComparison.InvariantCultureIgnoreCase)) &&
                         (albumName.StartsWith(album.Name, StringComparison.InvariantCultureIgnoreCase) || album.Name.StartsWith(albumName, StringComparison.InvariantCultureIgnoreCase)))
                     {
@@ -121,7 +158,7 @@ namespace SpotifyAPI.AlbumMetadataSearch
 
                     Console.WriteLine($"#{albums.Count + 1} - {a.Name} - \"{album.Name}\" - {album.ReleaseDate} - {album.Type}");
 
-                    FullAlbum fullAlbum = api.GetAlbum(album.Id);
+                    FullAlbum fullAlbum = GetFullAlbum(api, album.Id);
                     albums.Add(new KeyValuePair<FullAlbum, FullArtist>(fullAlbum, a));
                     foreach (SimpleTrack track in fullAlbum.Tracks.Items)
                     {
