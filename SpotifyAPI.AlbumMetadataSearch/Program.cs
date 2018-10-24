@@ -28,14 +28,13 @@ namespace SpotifyAPI.AlbumMetadataSearch
             if (depth > 0)
             {
                 Console.WriteLine($"Child directories found, detected depth is {depth}.  Press Y to continue");
-                if (Console.ReadKey().Key != ConsoleKey.Y)
+                if (!Console.ReadLine().Trim().Equals("Y", StringComparison.InvariantCultureIgnoreCase))
                 {
                     return;
                 }
                 Console.WriteLine();
-                Console.WriteLine();
             }
-            
+
             CredentialsAuth auth = new CredentialsAuth("c04cdb49f2e34e25989458ff1653e194", "e8c464ee20d1453aa03330669f4ed2d9");
             Task<Token> task = auth.GetToken();
             task.Wait();
@@ -44,7 +43,7 @@ namespace SpotifyAPI.AlbumMetadataSearch
             {
                 TokenType = "Bearer",
                 AccessToken = task.Result.AccessToken
-            };          
+            };
 
             ProcessDirectory(api, dir, depth);
         }
@@ -63,9 +62,9 @@ namespace SpotifyAPI.AlbumMetadataSearch
 
             string path = dir.FullName;
             string[] paths = path.Split(new char[] { Path.DirectorySeparatorChar });
-            
+
             string artistName = paths[paths.Length - 2];
-            string albumName = paths[paths.Length - 1];                     
+            string albumName = paths[paths.Length - 1];
 
             Console.WriteLine($"Searching for {artistName} - {albumName}");
 
@@ -73,9 +72,10 @@ namespace SpotifyAPI.AlbumMetadataSearch
 
             var search = api.SearchItems(artistName, SpotifyAPI.Web.Enums.SearchType.Artist);
             bool hasExactMatch = false;
+            bool hasQualifyingMatch = false;
             foreach (FullArtist a in search.Artists.Items)
             {
-                List<SimpleAlbum> searchAlbums = api.GetArtistsAlbums(a.Id, SpotifyAPI.Web.Enums.AlbumType.Album).Items;
+                List<SimpleAlbum> searchAlbums = api.GetArtistsAlbums(a.Id, SpotifyAPI.Web.Enums.AlbumType.Album, market: "US").Items;
                 foreach (SimpleAlbum album in searchAlbums)
                 {
                     if (a.Name.Equals(artistName, StringComparison.InvariantCultureIgnoreCase) &&
@@ -83,6 +83,12 @@ namespace SpotifyAPI.AlbumMetadataSearch
                     {
                         hasExactMatch = true;
                         break;
+                    }
+                    else if(
+                        (artistName.StartsWith(a.Name, StringComparison.InvariantCultureIgnoreCase) || a.Name.StartsWith(artistName, StringComparison.InvariantCultureIgnoreCase)) &&
+                        (albumName.StartsWith(album.Name, StringComparison.InvariantCultureIgnoreCase) || album.Name.StartsWith(albumName, StringComparison.InvariantCultureIgnoreCase)))
+                    {
+                        hasQualifyingMatch = true;
                     }
                 }
 
@@ -92,27 +98,25 @@ namespace SpotifyAPI.AlbumMetadataSearch
                         a.Name.Equals(artistName, StringComparison.InvariantCultureIgnoreCase) &&
                         album.Name.Equals(albumName, StringComparison.InvariantCultureIgnoreCase);
 
-                    bool qualifyingMatch = 
-                        a.Name.StartsWith(artistName, StringComparison.InvariantCultureIgnoreCase) &&
-                        album.Name.StartsWith(albumName, StringComparison.InvariantCultureIgnoreCase);
+                    bool qualifyingMatch =
+                        (artistName.StartsWith(a.Name, StringComparison.InvariantCultureIgnoreCase) || a.Name.StartsWith(artistName, StringComparison.InvariantCultureIgnoreCase)) &&
+                        (albumName.StartsWith(album.Name, StringComparison.InvariantCultureIgnoreCase) || album.Name.StartsWith(albumName, StringComparison.InvariantCultureIgnoreCase));
 
                     if (hasExactMatch)
+                    {
+                        if (!exactMatch)
+                        {
+                            continue;
+                        }
+                        Console.WriteLine("Exact Match");
+                    }
+                    else if (hasQualifyingMatch)
                     {
                         if (!qualifyingMatch)
                         {
                             continue;
                         }
-                        else
-                        {
-                            if (exactMatch)
-                            {
-                                Console.WriteLine("Exact Match");
-                            }
-                            else
-                            {
-                                Console.WriteLine("Qualifying Match");
-                            }
-                        }
+                        Console.WriteLine("Qualifying Match");
                     }
 
                     Console.WriteLine($"#{albums.Count + 1} - {a.Name} - \"{album.Name}\" - {album.ReleaseDate} - {album.Type}");
@@ -128,7 +132,7 @@ namespace SpotifyAPI.AlbumMetadataSearch
 
             FullAlbum selectedAlbum = null;
             FullArtist selectedArtist = null;
-            
+
             if (albums.Count > 0)
             {
                 Console.WriteLine("Type album number to accept album info");
@@ -143,7 +147,7 @@ namespace SpotifyAPI.AlbumMetadataSearch
             {
                 string pictureFile = null;
                 if (selectedAlbum.Images.Count > 0)
-                {                    
+                {
                     Console.WriteLine("Downloading album images");
                     List<string> sizes = new List<string>()
                     {
@@ -181,51 +185,58 @@ namespace SpotifyAPI.AlbumMetadataSearch
                     }
                 }
 
-                int index = 0;
+                int index = -1;
                 foreach (string file in Directory.EnumerateFiles(path, "*.mp3").OrderBy(f => f).ToList())
                 {
-                    SimpleTrack track = selectedAlbum.Tracks.Items[index++];
+                    if (selectedAlbum.Tracks.Items.Count > ++index)
+                    {
+                        SimpleTrack track = selectedAlbum.Tracks.Items[index];
 
-                    string safeName = track.Name + ".mp3";
-                    foreach (char c in Path.GetInvalidFileNameChars())
-                    {
-                        safeName = safeName.Replace(c, '_');
-                    }
-                    string moveTo = Path.Combine(Path.GetDirectoryName(file), $"{track.TrackNumber:00} {safeName}");
-                    Console.WriteLine($"Updating {Path.GetFileName(file)} to {Path.GetFileName(moveTo)}");
-                    try
-                    {
-                        File.Move(file, moveTo);
-                    }
-                    catch (Exception e)
-                    {
+                        string safeName = track.Name + ".mp3";
+                        foreach (char c in Path.GetInvalidFileNameChars())
+                        {
+                            safeName = safeName.Replace(c, '_');
+                        }
+                        string moveTo = Path.Combine(Path.GetDirectoryName(file), $"{track.TrackNumber:00} {safeName}");
+                        Console.WriteLine($"Updating {Path.GetFileName(file)} to {Path.GetFileName(moveTo)}");
+                        try
+                        {
+                            File.Move(file, moveTo);
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine($"Error: {e.Message}");
+                        }
 
-                        Console.WriteLine($"Error: {e.Message}");
+                        TagLib.File tagFile = TagLib.File.Create(moveTo);
+                        tagFile.Tag.Title = track.Name;
+                        tagFile.Tag.Performers = track.Artists.Select(a => a.Name).ToArray();
+                        tagFile.Tag.AlbumArtists = new string[] { artistName };
+                        tagFile.Tag.Album = selectedAlbum.Name;
+                        tagFile.Tag.Track = (uint)track.TrackNumber;
+                        tagFile.Tag.Disc = (uint)track.DiscNumber;
+                        if (DateTime.TryParse(selectedAlbum.ReleaseDate, out DateTime release))
+                        {
+                            tagFile.Tag.Year = (uint)release.Year;
+                        }
+                        tagFile.Tag.Genres = selectedAlbum.Genres.ToArray();
+                        tagFile.Tag.Copyright = string.Join(", ", selectedAlbum.Copyrights.Select(c => $"{c.Type} - {c.Text}"));
+                        if (pictureFile != null)
+                        {
+                            tagFile.Tag.Pictures = new TagLib.IPicture[] { new TagLib.Picture(pictureFile) };
+                        }
+                        tagFile.Save();
                     }
-
-                    TagLib.File tagFile = TagLib.File.Create(moveTo);
-                    tagFile.Tag.Title = track.Name;
-                    tagFile.Tag.AlbumArtists = new string [] { artistName };
-                    tagFile.Tag.Album = selectedAlbum.Name;
-                    tagFile.Tag.Track = (uint)track.TrackNumber;
-                    tagFile.Tag.Disc = (uint)track.DiscNumber;
-                    if (DateTime.TryParse(selectedAlbum.ReleaseDate, out DateTime release))
+                    else
                     {
-                        tagFile.Tag.Year = (uint)release.Year;
+                        Console.WriteLine($"{Path.GetFileName(file)} not in track listing");
                     }
-                    tagFile.Tag.Genres = selectedAlbum.Genres.ToArray();
-                    tagFile.Tag.Copyright = string.Join(", ", selectedAlbum.Copyrights.Select(c => $"{c.Type} - {c.Text}"));
-                    if (pictureFile != null)
-                    {
-                        tagFile.Tag.Pictures = new TagLib.IPicture[] { new TagLib.Picture(pictureFile) };
-                    }
-                    tagFile.Save();
                 }
 
-                Console.WriteLine($"{artistName} - {artistName} Complete");
+                Console.WriteLine($"{artistName} - {albumName} Complete");
                 Console.WriteLine("-------------------------------------");
                 Console.WriteLine();
-                Console.Clear();
+                //Console.Clear();
             }
         }
     }
